@@ -101,13 +101,13 @@
             const historyRef = ref(database, "absensi");
 
             onValue(historyRef, (snapshot) => {
-                historyTable.innerHTML = ""; 
+                historyTable.innerHTML = "";
 
                 snapshot.forEach((childSnapshot) => {
                     const uid = childSnapshot.key;
                     const data = childSnapshot.val();
-                    const nama = data.nama || uid; 
-                    const riwayat = data.history || {}; 
+                    const nama = data.nama || uid;
+                    const riwayat = data.history || {};
 
                     if (Object.keys(riwayat).length === 0) {
                         return;
@@ -116,9 +116,20 @@
                     Object.keys(riwayat).forEach((timestamp) => {
                         let waktuFormatted = "Invalid Time";
                         let waktuRaw = riwayat[timestamp].waktu;
+
                         if (typeof waktuRaw === "string") {
-                            let waktuObj = new Date(waktuRaw.replace(" ", "T") + "Z");
-                            if (!isNaN(waktuObj)) {
+                            // Ambil tanggal hari ini dalam format YYYY-MM-DD
+                            let today = new Date();
+                            let todayDate = today.toISOString().split("T")[0]; // Format: YYYY-MM-DD
+
+                            // Ambil hanya jam, menit, detik dari waktuRaw
+                            let waktuParts = waktuRaw.split(" ")[1]; // Hanya "HH:mm:ss"
+
+                            // Gabungkan tanggal hari ini dengan waktu dari database
+                            let waktuISO = `${todayDate}T${waktuParts}Z`;
+                            let waktuObj = new Date(waktuISO);
+
+                            if (!isNaN(waktuObj.getTime())) {
                                 waktuFormatted = waktuObj.toLocaleString("id-ID");
                             }
                         }
@@ -133,6 +144,7 @@
                 });
             });
         }
+
 
         function editAbsensi(uid, nama) {
             const newName = prompt("Masukkan nama untuk UID: " + uid, nama);
