@@ -97,65 +97,104 @@
         }
 
         function loadHistoryDetails() {
-            const historyTable = document.getElementById("history-table");
-            const historyRef = ref(database, "absensi");
+    const historyTableBody = document.getElementById("history-table-body");
+    const historyRef = ref(database, "absensi");
+    const judulTabel = document.getElementById("judul-tabel");
 
-            onValue(historyRef, (snapshot) => {
-                historyTable.innerHTML = "";
+    onValue(historyRef, (snapshot) => {
+        historyTableBody.innerHTML = "";
 
-                snapshot.forEach((childSnapshot) => {
-                    const uid = childSnapshot.key;
-                    const data = childSnapshot.val();
-                    const nama = data.nama || uid;
-                    const riwayat = data.history || {};
+        let no = 1;
+        let riwayatArray = [];
 
-                    if (Object.keys(riwayat).length === 0) {
-                        return;
+        snapshot.forEach((childSnapshot) => {
+            const uid = childSnapshot.key;
+            const data = childSnapshot.val();
+            const nama = data.nama || uid;
+            const riwayat = data.history || {};
+
+            if (Object.keys(riwayat).length === 0) {
+                return;
+            }
+
+            Object.keys(riwayat).forEach((timestamp) => {
+                let waktuRaw = riwayat[timestamp].waktu;
+
+                if (typeof waktuRaw === "string") {
+                    // Ambil tanggal hari ini dalam format YYYY-MM-DD
+                    let today = new Date();
+                    let todayDate = today.toISOString().split("T")[0]; // Format: YYYY-MM-DD
+
+                    // Ambil hanya jam, menit, detik dari waktuRaw
+                    let waktuParts = waktuRaw.split(" ")[1]; // Hanya "HH:mm:ss"
+
+                    // Gabungkan tanggal hari ini dengan waktu dari database
+                    let waktuISO = `${todayDate}T${waktuParts}Z`;
+                    let waktuObj = new Date(waktuISO);
+
+                    if (!isNaN(waktuObj.getTime())) {
+                        // Konversi ke WIB (Asia/Jakarta)
+                        let tanggal = new Intl.DateTimeFormat("id-ID", {
+                            timeZone: "Asia/Jakarta",
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                            weekday: "long"
+                        }).format(waktuObj);
+                        let jam = new Intl.DateTimeFormat("id-ID", {
+                            timeZone: "Asia/Jakarta",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            hour12: false
+                        }).format(waktuObj);
+
+                        riwayatArray.push({
+                            no: no,
+                            nama: nama,
+                            uid: uid,
+                            tanggal: tanggal,
+                            jam: jam,
+                            status: riwayat[timestamp].status,
+                            waktuObj: waktuObj
+                        });
+                        no++;
                     }
-
-                    Object.keys(riwayat).forEach((timestamp) => {
-                        let waktuFormatted = "Invalid Time";
-                        let waktuRaw = riwayat[timestamp].waktu;
-
-                        if (typeof waktuRaw === "string") {
-                            // Ambil tanggal hari ini dalam format YYYY-MM-DD
-                            let today = new Date();
-                            let todayDate = today.toISOString().split("T")[0]; // Format: YYYY-MM-DD
-
-                            // Ambil hanya jam, menit, detik dari waktuRaw
-                            let waktuParts = waktuRaw.split(" ")[1]; // Hanya "HH:mm:ss"
-
-                            // Gabungkan tanggal hari ini dengan waktu dari database
-                            let waktuISO = `${todayDate}T${waktuParts}Z`;
-                            let waktuObj = new Date(waktuISO);
-
-                            if (!isNaN(waktuObj.getTime())) {
-                                // Konversi ke WIB (Asia/Jakarta)
-                                waktuFormatted = new Intl.DateTimeFormat("id-ID", {
-                                    timeZone: "Asia/Jakarta",
-                                    year: "numeric",
-                                    month: "2-digit",
-                                    day: "2-digit",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                    hour12: false
-                                }).format(waktuObj);
-                            }
-                        }
-
-                        historyTable.innerHTML += `<tr>
-                            <td>${nama}</td>
-                            <td>${uid}</td>
-                            <td>${waktuFormatted}</td>
-                            <td>${riwayat[timestamp].status}</td>
-                        </tr>`;
-                    });
-                });
+                }
             });
-        }
+        });
 
+        // Urutkan riwayatArray berdasarkan waktu dalam urutan terbalik
+        riwayatArray.sort((a, b) => {
+            return b.waktuObj - a.waktuObj;
+        });
 
+        // Tampilkan riwayatArray di tabel
+        let nomor = 1;
+        riwayatArray.forEach((riwayat) => {
+            historyTableBody.innerHTML += `<tr>
+                <td>${nomor}</td>
+                <td>${riwayat.nama}</td>
+                <td>${riwayat.uid}</td>
+                <td>${riwayat.tanggal}</td>
+                <td>${riwayat.jam}</td>
+                <td>${riwayat.status}</td>
+            </tr>`;
+            nomor++;
+        });
+    });
+}
+
+function hapusSemuaRiwayat() {
+    const historyRef = ref(database, "absensi");
+
+    historyRef.remove().then(() => {
+        alert("Semua riwayat telah dihapus");
+        loadHistoryDetails();
+    }).catch((error) => {
+        alert("Gagal menghapus riwayat: " + error.message);
+    });
+}
         function editAbsensi(uid, nama) {
             const newName = prompt("Masukkan nama untuk UID: " + uid, nama);
             if (newName) {
@@ -183,6 +222,7 @@
         window.loadHistoryDetails = loadHistoryDetails;
         window.editAbsensi = editAbsensi;
         window.deleteAbsensi = deleteAbsensi;
+        window.hapusriwayat = hapusSemuaRiwayat;
     </script>
 </head>
 <body>
@@ -196,10 +236,16 @@
         }
 
        
+        .logo-container {
+            display: flex;
+            align-items: center; /* Menyamakan posisi vertikal */
+            justify-content: center; /* Menengahkan logo */
+            gap: 20px; /* Jarak antar logo */
+        }
+
         .logo {
-            display: block;
-            margin: 20px auto;
-            max-width: 150px;
+            max-width: 150px; /* Atur ukuran maksimal */
+            height: auto;
         }
 
        
@@ -220,7 +266,7 @@
 
         table th {
             background-color: #007bff;
-            color: white;
+            color: rgb(0, 0, 0);
         }
 
         table tbody tr:hover {
@@ -238,7 +284,10 @@
             position: relative;
         }
     </style>
+<div class="logo-container">
     <img src="IMG-20250114-WA0003-removebg-preview.png" alt="Logo Absensi" class="logo">
+    <img src="MIFDA MEDIA (2).png" alt="Logo Pondok" class="logo">
+</div>
     <div id="login-form" class="container mt-5" style="display: none;">
         <h2 class="mb-4">Login</h2>
         <form onsubmit="login(event)">
@@ -282,20 +331,23 @@
 
         <h3>Riwayat Absensi</h3>
         <button class="btn btn-success mb-3" onclick="printHistory()">Cetak Riwayat</button>
+        <button class="btn btn-danger mb-3" onclick="hapusSemuaRiwayat()">Hapus semua</button>
         <table id="history-table" class="table table-bordered">
             <thead>
                 <tr>
+                    <th>No</th>
                     <th>Nama</th>
-                    <th>UID</th>
-                    <th>Waktu</th>
+                    <th>ID</th>
+                    <th>Tanggal</th>
+                    <th>Jam</th>
                     <th>Status</th>
                 </tr>
             </thead>
-            <tbody></tbody>
+            <tbody id="history-table-body"></tbody>
         </table>
     </div>
     <div class="footer">
-        &copy; 2025 KKN-T.7.Universitas Islam Raden Rahmat Malanag | All Rights Reserved
+        &copy; 2025 KKN-T.7.Universitas Islam Raden Rahmat Malang | All Rights Reserved
     </div>
     <script>
     function printHistory() {
