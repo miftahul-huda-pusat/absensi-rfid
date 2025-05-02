@@ -362,11 +362,11 @@ function getPrayerStatus(timeString) {
     const totalMinutes = hours * 60 + minutes;
     
     // Perluas rentang waktu dengan buffer 30 menit
-    if (totalMinutes >= 150 && totalMinutes <= 390) {       // 02:30 - 06:30 (Subuh)
+    if (totalMinutes >= 180 && totalMinutes <= 360) {       // 03:00 - 06:00 (Subuh)
       return { status: 'Subuh', class: 'status-subuh' };
-    } else if (totalMinutes >= 810 && totalMinutes <= 1020) { // 13:30 - 17:00 (Ashar)
+    } else if (totalMinutes >= 840 && totalMinutes <= 990) { // 14:00 - 16:30 (Ashar)
       return { status: 'Ashar', class: 'status-ashar' };
-    } else if (totalMinutes >= 1020 && totalMinutes <= 1230) { // 17:00 - 20:30 (Maghrib)
+    } else if (totalMinutes >= 1020 && totalMinutes <= 1200) { // 17:00 - 20:00 (Maghrib)
       return { status: 'Maghrib', class: 'status-maghrib' };
     } else {
       console.warn(`Waktu tidak sesuai jadwal sholat: ${timeString} (${totalMinutes} menit)`);
