@@ -1,380 +1,1000 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Absensi RFID</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-        import { getDatabase, ref, onValue, update, remove, set } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
-        
-        const firebaseConfig = {
-          apiKey: "AIzaSyBDGplRg7XSwJSynKI_55tH6iRt2HbtlFg",
-          authDomain: "absensirfid-96aa9.firebaseapp.com",
-          databaseURL: "https://absensirfid-96aa9-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "absensirfid-96aa9",
-          storageBucket: "absensirfid-96aa9.firebasestorage.app",
-          messagingSenderId: "494262724507",
-          appId: "1:494262724507:web:4c90f58b273a46123d233e"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const database = getDatabase(app);
-
-        function toggleLoginPage(showLogin) {
-            document.getElementById('login-form').style.display = showLogin ? 'block' : 'none';
-            document.getElementById('admin-page').style.display = showLogin ? 'none' : 'block';
-        }
-
-        window.onload = function() {
-            onAuthStateChanged(auth, (user) => {
-                if (!user) {
-                    toggleLoginPage(true);
-                } else {
-                    toggleLoginPage(false);
-                    loadHistory();
-                    loadHistoryDetails();
-                }
-            });
-        };
-
-        function login(event) {
-            event.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            
-            signInWithEmailAndPassword(auth, email, password)
-                .then(() => {
-                    toggleLoginPage(false);
-                    loadHistory();
-                    loadHistoryDetails();
-                })
-                .catch((error) => {
-                    alert("Login gagal: " + error.message);
-                });
-        }
-
-        function logout() {
-            signOut(auth).then(() => {
-                toggleLoginPage(true);
-            });
-        }
-
-        function loadHistory() {
-            const validTable = document.getElementById("valid-history-table");
-            const invalidTable = document.getElementById("invalid-history-table");
-            const absensiRef = ref(database, "absensi");
-            
-            onValue(absensiRef, (snapshot) => {
-                validTable.innerHTML = "";
-                invalidTable.innerHTML = "";
-                
-                snapshot.forEach((childSnapshot) => {
-                    const uid = childSnapshot.key;
-                    const data = childSnapshot.val();
-                    const nama = data.nama || "Belum Valid";
-                    
-                    if (nama === "Belum Valid") {
-                        invalidTable.innerHTML += `<tr>
-                            <td>${uid}</td>
-                            <td>${nama}</td>
-                            <td><button class="btn btn-warning" onclick="editAbsensi('${uid}', '${nama}')">Edit</button></td>
-                            <td><button class="btn btn-danger" onclick="deleteAbsensi('${uid}')">Delete</button></td>
-                        </tr>`;
-                    } else {
-                        validTable.innerHTML += `<tr>
-                            <td>${uid}</td>
-                            <td>${nama}</td>
-                            <td><button class="btn btn-info" onclick="viewHistory('${uid}', '${nama}')">Lihat Riwayat</button></td>
-                        </tr>`;
-                    }
-                });
-            });
-        }
-
-        function loadHistoryDetails() {
-    const historyTableBody = document.getElementById("history-table-body");
-    const historyRef = ref(database, "absensi");
-    const judulTabel = document.getElementById("judul-tabel");
-
-    onValue(historyRef, (snapshot) => {
-        historyTableBody.innerHTML = "";
-
-        let no = 1;
-        let riwayatArray = [];
-
-        snapshot.forEach((childSnapshot) => {
-            const uid = childSnapshot.key;
-            const data = childSnapshot.val();
-            const nama = data.nama || uid;
-            const riwayat = data.history || {};
-
-            if (Object.keys(riwayat).length === 0) {
-                return;
-            }
-
-            Object.keys(riwayat).forEach((timestamp) => {
-                let waktuRaw = riwayat[timestamp].waktu;
-
-                if (typeof waktuRaw === "string") {
-                    // Ambil tanggal hari ini dalam format YYYY-MM-DD
-                    let today = new Date();
-                    let todayDate = today.toISOString().split("T")[0]; // Format: YYYY-MM-DD
-
-                    // Ambil hanya jam, menit, detik dari waktuRaw
-                    let waktuParts = waktuRaw.split(" ")[1]; // Hanya "HH:mm:ss"
-
-                    // Gabungkan tanggal hari ini dengan waktu dari database
-                    let waktuISO = `${todayDate}T${waktuParts}Z`;
-                    let waktuObj = new Date(waktuISO);
-
-                    if (!isNaN(waktuObj.getTime())) {
-                        // Konversi ke WIB (Asia/Jakarta)
-                        let tanggal = new Intl.DateTimeFormat("id-ID", {
-                            timeZone: "Asia/Jakarta",
-                            year: "numeric",
-                            month: "2-digit",
-                            day: "2-digit",
-                            weekday: "long"
-                        }).format(waktuObj);
-                        let jam = new Intl.DateTimeFormat("id-ID", {
-                            timeZone: "Asia/Jakarta",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                            hour12: false
-                        }).format(waktuObj);
-
-                        riwayatArray.push({
-                            no: no,
-                            nama: nama,
-                            uid: uid,
-                            tanggal: tanggal,
-                            jam: jam,
-                            status: riwayat[timestamp].status,
-                            waktuObj: waktuObj
-                        });
-                        no++;
-                    }
-                }
-            });
-        });
-
-        // Urutkan riwayatArray berdasarkan waktu dalam urutan terbalik
-        riwayatArray.sort((a, b) => {
-            return b.waktuObj - a.waktuObj;
-        });
-
-        // Tampilkan riwayatArray di tabel
-        let nomor = 1;
-        riwayatArray.forEach((riwayat) => {
-            historyTableBody.innerHTML += `<tr>
-                <td>${nomor}</td>
-                <td>${riwayat.nama}</td>
-                <td>${riwayat.uid}</td>
-                <td>${riwayat.tanggal}</td>
-                <td>${riwayat.jam}</td>
-                <td>${riwayat.status}</td>
-            </tr>`;
-            nomor++;
-        });
-    });
-}
-
-function hapusSemuaRiwayat() {
-    const historyRef = ref(database, "absensi");
-
-    historyRef.remove().then(() => {
-        alert("Semua riwayat telah dihapus");
-        loadHistoryDetails();
-    }).catch((error) => {
-        alert("Gagal menghapus riwayat: " + error.message);
-    });
-}
-        function editAbsensi(uid, nama) {
-            const newName = prompt("Masukkan nama untuk UID: " + uid, nama);
-            if (newName) {
-                const absensiRef = ref(database, 'absensi/' + uid);
-                update(absensiRef, { nama: newName }).then(() => {
-                    loadHistory();
-                    loadHistoryDetails();
-                });
-            }
-        }
-
-        function deleteAbsensi(uid) {
-            const absensiRef = ref(database, 'absensi/' + uid);
-            remove(absensiRef).then(() => {
-                loadHistory();
-                loadHistoryDetails();
-            }).catch((error) => {
-                alert('Error deleting data: ' + error.message);
-            });
-        }
-
-        window.logout = logout;
-        window.login = login;
-        window.loadHistory = loadHistory;
-        window.loadHistoryDetails = loadHistoryDetails;
-        window.editAbsensi = editAbsensi;
-        window.deleteAbsensi = deleteAbsensi;
-        window.hapusriwayat = hapusSemuaRiwayat;
-    </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard Absensi</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      min-height: 100vh;
+      background: linear-gradient(to bottom right, #ffffff, #a7d7c5);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .logo {
+      max-height: 200px;
+      height: auto;
+      width: auto;
+    }
+    .container {
+      background-color: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(5px);
+      padding: 20px;
+      margin: 20px auto;
+      border-radius: 15px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      width: 95%;
+      max-width: 1100px;
+    }
+    .table-title {
+        text-align: center;
+        margin-bottom: 20px;
+        position: relative;
+    }
+    
+    .filter-container {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .filter-label {
+        white-space: nowrap;
+        font-weight: 500;
+    }
+    
+    .filter-input {
+        padding: 5px 10px;
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+    }
+    /* MODIFIKASI TABEL RESPONSIF */
+    .table-responsive-container {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-bottom: 1rem;
+      border: 1px solid #dee2e6;
+      border-radius: 0.25rem;
+      width: 100%;
+    }
+    
+    .table-custom {
+      width: 100%;
+      margin-bottom: 1rem;
+      color: #212529;
+      font-size: 0.95rem;
+      min-width: 600px; /* Minimum width before scrolling */
+    }
+    
+    .table-custom th,
+    .table-custom td {
+      padding: 0.75rem;
+      vertical-align: middle;
+      border-top: 1px solid #dee2e6;
+      white-space: nowrap;
+    }
+    
+    .table-custom thead th {
+      vertical-align: middle;
+      border-bottom: 2px solid #dee2e6;
+      background-color: #0d6efd;
+      color: white;
+      position: sticky;
+      top: 0;
+    }
+    
+    .table-custom tbody tr:nth-child(even) {
+      background-color: rgba(0,0,0,0.02);
+    }
+    
+    /* Kolom khusus untuk UID */
+    .uid-cell {
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    /* Warna status */
+    .status-subuh {
+      color: #126e31;
+      font-weight: 500;
+    }
+    .status-ashar {
+      color: #1cc88a;
+      font-weight: 500;
+    }
+    .status-maghrib {
+      color: #f6c23e;
+      font-weight: 500;
+    }
+    .status-invalid {
+      color: #e74a3b;
+      font-weight: 500;
+    }
+    
+    /* Warna untuk rekapitulasi */
+    .hadir {
+      background-color: #d4edda !important;
+      color: #155724;
+    }
+    .tidak-hadir {
+      background-color: #f8d7da !important;
+      color: #721c24;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+      }
+      
+      .table-custom {
+        font-size: 0.85rem;
+      }
+      
+      .table-custom th,
+      .table-custom td {
+        padding: 0.5rem;
+      }
+      
+      .uid-cell {
+        max-width: 80px;
+      }
+    }
+    
+    @media (min-width: 992px) {
+      .table-custom {
+        font-size: 1rem;
+      }
+      
+      .table-custom th,
+      .table-custom td {
+        padding: 0.85rem;
+      }
+    }
+    
+    .footer {
+      background-color: #343a40;
+      color: white;
+      width: 100%;
+      text-align: center;
+      padding: 15px;
+      font-size: 0.8rem;
+    }
+    
+    .chart-container {
+      position: relative;
+      height: 250px;
+      margin-bottom: 20px;
+    }
+    
+    .btn-sm {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+    }
+  </style>
 </head>
 <body>
-    <style>
-        /* Styling dasar */
-        body {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
+  <div class="logo-container">
+    <img src="IMG-20250114-WA0003-removebg-preview.png" class="logo" alt="Logo 1"/>
+    <img src="MIFDA MEDIA (2).png" class="logo" alt="Logo 2"/>
+  </div>
 
-       
-        .logo-container {
-            display: flex;
-            align-items: center; /* Menyamakan posisi vertikal */
-            justify-content: center; /* Menengahkan logo */
-            gap: 20px; /* Jarak antar logo */
-        }
+  <div id="login-form" class="container" style="display: none;">
+    <h3 class="text-center">Login Admin</h3>
+    <form onsubmit="login(event)">
+      <input id="email" type="email" class="form-control mb-2" placeholder="Email" required>
+      <input id="password" type="password" class="form-control mb-2" placeholder="Password" required>
+      <button type="submit" class="btn btn-primary w-100"><i class="fas fa-sign-in-alt"></i> Login</button>
+    </form>
+  </div>
 
-        .logo {
-            max-width: 150px; /* Atur ukuran maksimal */
-            height: auto;
-        }
-
-       
-        .container {
-            flex: 1;
-            max-width: 800px;
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-            background-color: white;
-            margin: auto;
-        }
-
-        
-        table {
-            margin-top: 20px;
-        }
-
-        table th {
-            background-color: #007bff;
-            color: rgb(0, 0, 0);
-        }
-
-        table tbody tr:hover {
-            background-color: #f1f1f1;
-        }
-
-        
-        .footer {
-            background-color: #343a40;
-            color: white;
-            text-align: center;
-            padding: 15px 0;
-            margin-top: auto;
-            width: 100%;
-            position: relative;
-        }
-    </style>
-<div class="logo-container">
-    <img src="IMG-20250114-WA0003-removebg-preview.png" alt="Logo Absensi" class="logo">
-    <img src="MIFDA MEDIA (2).png" alt="Logo Pondok" class="logo">
-</div>
-    <div id="login-form" class="container mt-5" style="display: none;">
-        <h2 class="mb-4">Login</h2>
-        <form onsubmit="login(event)">
-            <div class="mb-3">
-                <input type="email" id="email" class="form-control" placeholder="Email" required><br>
-            </div>
-            <div class="mb-3">
-                <input type="password" id="password" class="form-control" placeholder="Password" required><br>
-            </div>
-            <button type="submit" class="btn btn-primary">Login</button>
-        </form>
+  <div id="admin-page" class="container" style="display: none;">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+      <h3 class="mb-2">Dashboard Absensi</h3>
+      <button onclick="logout()" class="btn btn-danger btn-sm"><i class="fas fa-sign-out-alt"></i> Logout</button>
     </div>
-    
-    <div id="admin-page" class="container mt-5" style="display: none;">
-        <button class="btn btn-danger" onclick="logout()">Logout</button>
-        <h2 class="mb-4">Data Absensi RFID</h2>
-        
-        <h3>Valid History</h3>
-        <table id="valid-history-table" class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>UID</th>
-                    <th>Nama</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-        
-        <h3>Invalid History</h3>
-        <table id="invalid-history-table" class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>UID</th>
-                    <th>Nama</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
 
-        <h3>Riwayat Absensi</h3>
-        <button class="btn btn-success mb-3" onclick="printHistory()">Cetak Riwayat</button>
-        <button class="btn btn-danger mb-3" onclick="hapusSemuaRiwayat()">Hapus semua</button>
-        <table id="history-table" class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>No</th>
-                    <th>Nama</th>
-                    <th>ID</th>
-                    <th>Tanggal</th>
-                    <th>Jam</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="history-table-body"></tbody>
-        </table>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <div class="chart-container">
+          <canvas id="hariIniChart"></canvas>
+        </div>
+      </div>
+      <div class="col-md-6 mb-3">
+        <div class="chart-container">
+          <canvas id="mingguIniChart"></canvas>
+        </div>
+      </div>
     </div>
-    <div class="footer">
-        &copy; 2025 KKN-T.7.Universitas Islam Raden Rahmat Malang | All Rights Reserved
+
+    <h4 class="table-title">Daftar Kartu Terdaftar</h4>
+    <div class="table-responsive-container">
+      <table class="table-custom table-bordered" id="registered-cards-table">
+        <thead>
+          <tr><th>Nama</th><th>Kelas</th><th>UID</th><th>Aksi</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
-    <script>
-    function printHistory() {
-        const historyTable = document.getElementById("history-table").outerHTML;
+
+    <h4 class="table-title">Kartu Belum Terdaftar</h4>
+    <div class="table-responsive-container">
+      <table class="table-custom table-bordered" id="unregistered-cards-table">
+        <thead>
+          <tr><th>UID</th><th>Aksi</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h4 class="table-title">Riwayat Absensi</h4>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="filter-container">
+        <button onclick="hapusSemuaRiwayat()" class="btn btn-danger btn-sm mb-2"><i class="fas fa-trash"></i> Hapus Semua Riwayat</button>
+        <button onclick="exportToExcel()" class="btn btn-success btn-sm mb-2"><i class="fas fa-file-excel"></i> Export to Excel</button>
         
-        const printWindow = window.open("", "", "width=800,height=600");
-        printWindow.document.write(`
-            <html>
-            <head>
-                <title>Cetak Riwayat Absensi</title>
-                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"/>
-            </head>
-            <body>
-                <h2 class="text-center">Riwayat Absensi</h2>
-                ${historyTable}
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        window.onafterprint = function() { window.close(); };
-                    };
-                <\/script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
+        <div class="filter-group">
+          <span class="filter-label">Filter:</span>
+          <input type="text" id="filterNama" class="form-control filter-input" placeholder="Nama" oninput="applyFilters()">
+          <select id="filterStatus" class="form-select filter-input" onchange="applyFilters()">
+            <option value="">Semua Status</option>
+            <option value="Subuh">Subuh</option>
+            <option value="Ashar">Ashar</option>
+            <option value="Maghrib">Maghrib</option>
+            <option value="Tidak masuk">Tidak masuk</option>
+          </select>
+          <input type="date" id="filterTanggal" class="form-control filter-input" onchange="applyFilters()">
+          <select id="filterBulan" class="form-select filter-input" onchange="applyFilters()">
+            <option value="">Semua Bulan</option>
+            <option value="0">Januari</option>
+            <option value="1">Februari</option>
+            <option value="2">Maret</option>
+            <option value="3">April</option>
+            <option value="4">Mei</option>
+            <option value="5">Juni</option>
+            <option value="6">Juli</option>
+            <option value="7">Agustus</option>
+            <option value="8">September</option>
+            <option value="9">Oktober</option>
+            <option value="10">November</option>
+            <option value="11">Desember</option>
+          </select>
+          <button onclick="resetFilters()" class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt"></i> Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="table-responsive-container">
+      <table class="table-custom table-bordered" id="history-table">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama</th>
+            <th>Kelas</th>
+            <th>UID</th>
+            <th>Tanggal</th>
+            <th>Jam</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="history-table-body"></tbody>
+      </table>
+    </div>
+
+    <h4 class="table-title">Rekapitulasi Absensi Bulan Ini</h4>
+    <div class="table-responsive-container">
+      <table class="table-custom table-bordered" id="monthly-report-table">
+        <thead>
+          <tr>
+            <th rowspan="2">No</th>
+            <th rowspan="2">Nama</th>
+            <th rowspan="2">Kelas</th>
+            <th colspan="3" class="text-center">Kehadiran</th>
+          </tr>
+          <tr>
+            <th>Subuh</th>
+            <th>Ashar</th>
+            <th>Maghrib</th>
+          </tr>
+        </thead>
+        <tbody id="monthly-report-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>&copy; 2025 KKN-T.7 Unira Malang | All Rights Reserved</p>
+  </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+import { getDatabase, ref, onValue, update, remove, get, set } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBDGplRg7XSwJSynKI_55tH6iRt2HbtlFg",
+  authDomain: "absensirfid-96aa9.firebaseapp.com",
+  databaseURL: "https://absensirfid-96aa9-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "absensirfid-96aa9",
+  storageBucket: "absensirfid-96aa9.appspot.com",
+  messagingSenderId: "494262724507",
+  appId: "1:494262724507:web:4c90f58b273a46123d233e"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// Global variable to store all history entries for filtering
+let allHistoryEntries = [];
+
+function getPrayerStatus(timeString) {
+  try {
+    // Bersihkan dan validasi format waktu
+    timeString = timeString.trim().replace(/\./g, ':');
+    if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(timeString)) {
+      console.error(`Format waktu tidak valid: ${timeString}`);
+      return { status: 'Invalid Format', class: 'status-invalid' };
     }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    const [hours, minutes] = timeString.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes;
+    
+    // Perluas rentang waktu dengan buffer 30 menit
+    if (totalMinutes >= 150 && totalMinutes <= 390) {       // 02:30 - 06:30 (Subuh)
+      return { status: 'Subuh', class: 'status-subuh' };
+    } else if (totalMinutes >= 810 && totalMinutes <= 1020) { // 13:30 - 17:00 (Ashar)
+      return { status: 'Ashar', class: 'status-ashar' };
+    } else if (totalMinutes >= 1020 && totalMinutes <= 1230) { // 17:00 - 20:30 (Maghrib)
+      return { status: 'Maghrib', class: 'status-maghrib' };
+    } else {
+      console.warn(`Waktu tidak sesuai jadwal sholat: ${timeString} (${totalMinutes} menit)`);
+      return { status: 'Tidak masuk', class: 'status-invalid' };
+    }
+  } catch (error) {
+    console.error(`Error processing time: ${timeString}`, error);
+    return { status: 'Error', class: 'status-invalid' };
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  document.getElementById("login-form").style.display = user ? "none" : "block";
+  document.getElementById("admin-page").style.display = user ? "block" : "none";
+  if (user) {
+    loadRegisteredCards();
+    loadUnregisteredCards();
+    loadHistoryDetails();
+    generateMonthlyReport();
+  }
+});
+
+window.login = function(event) {
+  event.preventDefault();
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("password").value;
+  signInWithEmailAndPassword(auth, email, pass).catch(e => alert("Login gagal: " + e.message));
+};
+
+window.logout = () => signOut(auth);
+
+function loadRegisteredCards() {
+  const tableBody = document.querySelector("#registered-cards-table tbody");
+  onValue(ref(db, "absensi"), snapshot => {
+    tableBody.innerHTML = "";
+    snapshot.forEach(child => {
+      const uid = child.key;
+      const data = child.val();
+      if (data.nama && data.nama !== "Belum Valid") {
+        const nama = data.nama;
+        const kelas = data.kelas || "Belum diatur";
+        tableBody.innerHTML += `
+          <tr>
+            <td>${nama}</td>
+            <td>${kelas}</td>
+            <td class="uid-cell">${uid}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-warning btn-sm" onclick="editCard('${uid}', '${nama}', '${kelas}')">
+                <i class="fas fa-edit"></i> Edit
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteCard('${uid}')">
+                <i class="fas fa-trash"></i> Hapus
+              </button>
+            </td>
+          </tr>`;
+      }
+    });
+  });
+}
+
+function loadUnregisteredCards() {
+  const tableBody = document.querySelector("#unregistered-cards-table tbody");
+  onValue(ref(db, "absensi"), snapshot => {
+    tableBody.innerHTML = "";
+    snapshot.forEach(child => {
+      const uid = child.key;
+      const data = child.val();
+      if (!data.nama || data.nama === "Belum Valid") {
+        tableBody.innerHTML += `
+          <tr>
+            <td class="uid-cell">${uid}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-primary btn-sm" onclick="registerNewCard('${uid}')">
+                <i class="fas fa-plus"></i> Daftarkan
+              </button>
+            </td>
+          </tr>`;
+      }
+    });
+  });
+}
+
+window.registerNewCard = function(uid) {
+  const nama = prompt("Masukkan nama untuk kartu ini:");
+  if (!nama) return;
+  
+  const kelas = prompt("Masukkan kelas untuk " + nama + ":");
+  
+  if (nama && kelas) {
+    set(ref(db, `absensi/${uid}`), {
+      nama: nama,
+      kelas: kelas,
+      history: {}
+    }).then(() => {
+      alert("Kartu berhasil didaftarkan!");
+      loadRegisteredCards();
+      loadUnregisteredCards();
+    }).catch(error => {
+      alert("Gagal mendaftarkan kartu: " + error.message);
+    });
+  }
+};
+
+window.editCard = function(uid, currentName, currentClass) {
+  const newName = prompt("Masukkan nama baru:", currentName);
+  if (newName === null) return;
+  
+  const newClass = prompt("Masukkan kelas baru:", currentClass || "");
+  
+  if (newName && newClass) {
+    update(ref(db, `absensi/${uid}`), {
+      nama: newName,
+      kelas: newClass
+    }).then(() => {
+      alert("Data kartu berhasil diperbarui!");
+      loadRegisteredCards();
+    }).catch(error => {
+      alert("Gagal memperbarui data: " + error.message);
+    });
+  }
+};
+
+window.deleteCard = function(uid) {
+  if (confirm("Apakah Anda yakin ingin menghapus kartu ini?")) {
+    remove(ref(db, `absensi/${uid}`))
+      .then(() => {
+        alert("Kartu berhasil dihapus!");
+        loadRegisteredCards();
+        loadUnregisteredCards();
+      })
+      .catch(error => {
+        alert("Gagal menghapus kartu: " + error.message);
+      });
+  }
+};
+
+window.hapusSemuaRiwayat = async function () {
+  if (!confirm("Apakah Anda yakin ingin menghapus SEMUA riwayat absensi?")) return;
+  
+  const absensiRef = ref(db, "absensi");
+  try {
+    const snapshot = await get(absensiRef);
+    if (!snapshot.exists()) return alert("Tidak ada data untuk dihapus.");
+    
+    const promises = [];
+    snapshot.forEach(child => {
+      const uid = child.key;
+      promises.push(update(ref(db, `absensi/${uid}`), { history: {} }));
+    });
+    
+    await Promise.all(promises);
+    alert("Semua riwayat berhasil dihapus.");
+    loadHistoryDetails();
+  } catch (err) {
+    alert("Gagal menghapus riwayat: " + err.message);
+  }
+};
+
+function loadHistoryDetails() {
+  const tbody = document.getElementById("history-table-body");
+  onValue(ref(db, "absensi"), snapshot => {
+    tbody.innerHTML = "";
+    allHistoryEntries = []; // Reset the stored entries
+    let debugData = [];
+    
+    snapshot.forEach(child => {
+      const uid = child.key;
+      const nama = child.val().nama || "Tidak Dikenal";
+      const kelas = child.val().kelas || "Belum diatur";
+      const history = child.val().history || {};
+      
+      Object.values(history).forEach(entry => {
+        try {
+          const waktuObj = new Date(entry.waktu + "Z");
+          if (isNaN(waktuObj.getTime())) {
+            console.error(`Invalid date: ${entry.waktu}`);
+            return;
+          }
+          
+          // Format tanggal dan jam
+          const tanggal = waktuObj.toLocaleDateString("id-ID", { 
+            timeZone: "Asia/Jakarta",
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+          }).replace(/\//g, '/');
+          
+          const tanggalForFilter = waktuObj.toISOString().split('T')[0]; // YYYY-MM-DD format for date filter
+          const bulan = waktuObj.getMonth(); // For month filter
+          
+          const jam = waktuObj.toLocaleTimeString("id-ID", { 
+            timeZone: "Asia/Jakarta", 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: false
+          }).replace(/\./g, ':');
+          
+          // Debug original and processed time
+          debugData.push({
+            original: entry.waktu,
+            processed: jam,
+            timestamp: waktuObj.getTime()
+          });
+          
+          const statusInfo = getPrayerStatus(jam);
+          
+          allHistoryEntries.push({
+            nama,
+            kelas,
+            uid,
+            tanggal,
+            tanggalForFilter,
+            bulan,
+            jam,
+            status: statusInfo.status,
+            statusClass: statusInfo.class,
+            waktuObj
+          });
+        } catch (error) {
+          console.error('Error processing entry:', entry, error);
+        }
+      });
+    });
+    
+    // Log debug information
+    console.table(debugData);
+    
+    // Urutkan berdasarkan waktu terbaru
+    allHistoryEntries.sort((a, b) => b.waktuObj - a.waktuObj);
+    
+    // Apply any existing filters
+    applyFilters();
+    
+    updateCharts(allHistoryEntries);
+  });
+}
+
+// Filter functions
+window.applyFilters = function() {
+  const tbody = document.getElementById("history-table-body");
+  const namaFilter = document.getElementById('filterNama').value.toLowerCase();
+  const statusFilter = document.getElementById('filterStatus').value;
+  const tanggalFilter = document.getElementById('filterTanggal').value;
+  const bulanFilter = document.getElementById('filterBulan').value;
+  
+  tbody.innerHTML = "";
+  
+  let filteredEntries = allHistoryEntries.filter(entry => {
+    // Filter by name
+    if (namaFilter && !entry.nama.toLowerCase().includes(namaFilter)) {
+      return false;
+    }
+    
+    // Filter by status
+    if (statusFilter && entry.status !== statusFilter) {
+      return false;
+    }
+    
+    // Filter by date
+    if (tanggalFilter && entry.tanggalForFilter !== tanggalFilter) {
+      return false;
+    }
+    
+    // Filter by month
+    if (bulanFilter !== "" && entry.bulan !== parseInt(bulanFilter)) {
+      return false;
+    }
+    
+    return true;
+  });
+  
+  // Display filtered results
+  filteredEntries.forEach((entry, index) => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${entry.nama}</td>
+        <td>${entry.kelas}</td>
+        <td class="uid-cell">${entry.uid}</td>
+        <td>${entry.tanggal}</td>
+        <td>${entry.jam}</td>
+        <td class="${entry.statusClass}">${entry.status}</td>
+      </tr>`;
+  });
+}
+
+window.resetFilters = function() {
+  document.getElementById('filterNama').value = '';
+  document.getElementById('filterStatus').value = '';
+  document.getElementById('filterTanggal').value = '';
+  document.getElementById('filterBulan').value = '';
+  applyFilters();
+}
+
+// Fungsi untuk mengekspor data ke Excel
+window.exportToExcel = async function() {
+  try {
+    const snapshot = await get(ref(db, "absensi"));
+    if (!snapshot.exists()) return alert("Tidak ada data untuk diekspor.");
+    
+    let allEntries = [];
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    // Kumpulkan semua data
+    snapshot.forEach(child => {
+      const uid = child.key;
+      const nama = child.val().nama || "Tidak Dikenal";
+      const kelas = child.val().kelas || "Belum diatur";
+      const history = child.val().history || {};
+      
+      Object.values(history).forEach(entry => {
+        const waktuObj = new Date(entry.waktu + "Z");
+        // Filter hanya bulan ini
+        if (waktuObj.getMonth() === currentMonth && waktuObj.getFullYear() === currentYear) {
+          const tanggal = waktuObj.toLocaleDateString("id-ID", { 
+            timeZone: "Asia/Jakarta",
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+          }).replace(/\//g, '/');
+          const jam = waktuObj.toLocaleTimeString("id-ID", { 
+            timeZone: "Asia/Jakarta", 
+            hour: '2-digit', 
+            minute: '2-digit'
+          });
+          
+          const statusInfo = getPrayerStatus(jam);
+          
+          allEntries.push({
+            nama,
+            kelas,
+            uid,
+            tanggal,
+            jam,
+            status: statusInfo.status,
+            waktuObj
+          });
+        }
+      });
+    });
+    
+    // Buat data untuk Excel
+    const excelData = [];
+    const users = {};
+    
+    // Kelompokkan data berdasarkan user dan tanggal
+    allEntries.forEach(entry => {
+      if (!users[entry.uid]) {
+        users[entry.uid] = {
+          nama: entry.nama,
+          kelas: entry.kelas,
+          dates: {}
+        };
+      }
+      
+      const dateKey = entry.tanggal;
+      if (!users[entry.uid].dates[dateKey]) {
+        users[entry.uid].dates[dateKey] = {
+          Subuh: false,
+          Ashar: false,
+          Maghrib: false
+        };
+      }
+      
+      if (entry.status === 'Subuh') users[entry.uid].dates[dateKey].Subuh = true;
+      if (entry.status === 'Ashar') users[entry.uid].dates[dateKey].Ashar = true;
+      if (entry.status === 'Maghrib') users[entry.uid].dates[dateKey].Maghrib = true;
+    });
+    
+    // Buat header untuk Excel
+    const header = ['No', 'Nama', 'Kelas'];
+    const dates = Object.keys(users[Object.keys(users)[0]]?.dates || {}).sort();
+    dates.forEach(date => {
+      header.push(`${date} (Subuh)`);
+      header.push(`${date} (Ashar)`);
+      header.push(`${date} (Maghrib)`);
+    });
+    excelData.push(header);
+    
+    // Isi data untuk Excel
+    Object.keys(users).forEach((uid, index) => {
+      const user = users[uid];
+      const row = [
+        index + 1,
+        user.nama,
+        user.kelas
+      ];
+      
+      dates.forEach(date => {
+        const attendance = user.dates[date] || { Subuh: false, Ashar: false, Maghrib: false };
+        row.push(attendance.Subuh ? 'Hadir' : 'Tidak Hadir');
+        row.push(attendance.Ashar ? 'Hadir' : 'Tidak Hadir');
+        row.push(attendance.Maghrib ? 'Hadir' : 'Tidak Hadir');
+      });
+      
+      excelData.push(row);
+    });
+    
+    // Buat worksheet
+    const ws = XLSX.utils.aoa_to_sheet(excelData);
+    
+    // Buat workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap Absensi");
+    
+    // Export ke file
+    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const fileName = `Rekap_Absensi_${monthNames[currentMonth]}_${currentYear}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+  } catch (error) {
+    alert("Gagal mengekspor data: " + error.message);
+  }
+};
+
+// Fungsi untuk membuat laporan bulanan
+async function generateMonthlyReport() {
+  try {
+    const snapshot = await get(ref(db, "absensi"));
+    if (!snapshot.exists()) return;
+    
+    const tbody = document.getElementById("monthly-report-body");
+    tbody.innerHTML = "";
+    
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    const users = {};
+    
+    // Kumpulkan data absensi
+    snapshot.forEach(child => {
+      const uid = child.key;
+      const nama = child.val().nama || "Tidak Dikenal";
+      const kelas = child.val().kelas || "Belum diatur";
+      const history = child.val().history || {};
+      
+      if (!users[uid]) {
+        users[uid] = {
+          nama,
+          kelas,
+          Subuh: 0,
+          Ashar: 0,
+          Maghrib: 0
+        };
+      }
+      
+      Object.values(history).forEach(entry => {
+        const waktuObj = new Date(entry.waktu + "Z");
+        if (waktuObj.getMonth() === currentMonth && waktuObj.getFullYear() === currentYear) {
+          const jam = waktuObj.toLocaleTimeString("id-ID", { 
+            timeZone: "Asia/Jakarta", 
+            hour: '2-digit', 
+            minute: '2-digit'
+          });
+          
+          const statusInfo = getPrayerStatus(jam);
+          if (statusInfo.status === 'Subuh') users[uid].Subuh++;
+          if (statusInfo.status === 'Ashar') users[uid].Ashar++;
+          if (statusInfo.status === 'Maghrib') users[uid].Maghrib++;
+        }
+      });
+    });
+    
+    // Tampilkan di tabel
+    let index = 1;
+    for (const uid in users) {
+      const user = users[uid];
+      const subuhClass = user.Subuh > 0 ? 'hadir' : 'tidak-hadir';
+      const asharClass = user.Ashar > 0 ? 'hadir' : 'tidak-hadir';
+      const maghribClass = user.Maghrib > 0 ? 'hadir' : 'tidak-hadir';
+      
+      tbody.innerHTML += `
+        <tr>
+          <td>${index++}</td>
+          <td>${user.nama}</td>
+          <td>${user.kelas}</td>
+          <td class="${subuhClass}">${user.Subuh > 0 ? 'Hadir' : 'Tidak Hadir'}</td>
+          <td class="${asharClass}">${user.Ashar > 0 ? 'Hadir' : 'Tidak Hadir'}</td>
+          <td class="${maghribClass}">${user.Maghrib > 0 ? 'Hadir' : 'Tidak Hadir'}</td>
+        </tr>`;
+    }
+    
+  } catch (error) {
+    console.error("Gagal membuat laporan bulanan:", error);
+  }
+}
+
+let hariIniChart, mingguIniChart;
+
+function updateCharts(entries) {
+  const today = new Date();
+  const todayFormatted = today.toLocaleDateString("id-ID", { 
+    timeZone: "Asia/Jakarta",
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).replace(/\//g, '/');
+  
+  // Data untuk chart hari ini
+  const todayData = {
+    'Subuh': 0,
+    'Ashar': 0,
+    'Maghrib': 0,
+    'Invalid': 0
+  };
+  
+  entries.forEach(entry => {
+    if (entry.tanggal === todayFormatted) {
+      todayData[entry.status] = (todayData[entry.status] || 0) + 1;
+    }
+  });
+  
+  // Data untuk chart minggu ini
+  const weekData = {};
+  entries.forEach(entry => {
+    weekData[entry.tanggal] = (weekData[entry.tanggal] || 0) + 1;
+  });
+  
+  updateChartHariIni(todayData);
+  updateChartMingguan(weekData);
+}
+
+function updateChartHariIni(data) {
+  const ctx = document.getElementById("hariIniChart").getContext("2d");
+  if (hariIniChart) hariIniChart.destroy();
+  
+  const labels = Object.keys(data);
+  const values = Object.values(data);
+  const backgroundColors = [
+    '#126e31', // Subuh - hijau
+    '#1cc88a', // Ashar - Hijau
+    '#f6c23e', // Maghrib - Kuning
+    '#e74a3b',  // Invalid - Merah
+    '#fc948b'  // Default - Abu-abu
+  ];
+  
+  hariIniChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: backgroundColors,
+        borderWidth: 1
+      }]
+    },
+    options: { 
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { 
+        title: { 
+          display: true, 
+          text: "Absensi Hari Ini",
+          font: {
+            size: 14
+          }
+        },
+        legend: {
+          position: 'bottom',
+          labels: {
+            boxWidth: 12,
+            padding: 10,
+            font: {
+              size: 10
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateChartMingguan(data) {
+  const ctx = document.getElementById("mingguIniChart").getContext("2d");
+  if (mingguIniChart) mingguIniChart.destroy();
+  
+  // Ambil 7 hari terakhir
+  const dates = Object.keys(data).sort().reverse().slice(0, 7).reverse();
+  const values = dates.map(date => data[date] || 0);
+  
+  mingguIniChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: dates,
+      datasets: [{
+        label: "Jumlah Absensi",
+        data: values,
+        backgroundColor: '#36b9cc',
+        borderColor: '#2c9faf',
+        borderWidth: 1
+      }]
+    },
+    options: { 
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { 
+        title: { 
+          display: true, 
+          text: "Absensi 7 Hari Terakhir",
+          font: {
+            size: 14
+          }
+        },
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1
+          }
+        },
+        x: {
+          ticks: {
+            maxRotation: 45,
+            minRotation: 45
+          }
+        }
+      }
+    }
+  });
+}
+</script>
 </body>
 </html>
