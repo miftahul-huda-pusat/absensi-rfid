@@ -363,11 +363,11 @@ function getPrayerStatus(timeString) {
     const totalMinutes = hours * 60 + minutes;
     
     // Perluas rentang waktu dengan buffer 30 menit
-    if (totalMinutes >= 180 && totalMinutes <= 360) {       // 03:00 - 06:00 (Subuh)
+    if (totalMinutes >= 150 && totalMinutes <= 390) {       // 02:30 - 06:30 (Subuh)
       return { status: 'Subuh', class: 'status-subuh' };
-    } else if (totalMinutes >= 840 && totalMinutes <= 990) { // 14:00 - 16:30 (Ashar)
+    } else if (totalMinutes >= 810 && totalMinutes <= 1020) { // 13:30 - 17:00 (Ashar)
       return { status: 'Ashar', class: 'status-ashar' };
-    } else if (totalMinutes >= 1020 && totalMinutes <= 1200) { // 17:00 - 20:00 (Maghrib)
+    } else if (totalMinutes >= 1020 && totalMinutes <= 1230) { // 17:00 - 20:30 (Maghrib)
       return { status: 'Maghrib', class: 'status-maghrib' };
     } else {
       console.warn(`Waktu tidak sesuai jadwal sholat: ${timeString} (${totalMinutes} menit)`);
@@ -443,12 +443,28 @@ function loadUnregisteredCards() {
               <button class="btn btn-primary btn-sm" onclick="registerNewCard('${uid}')">
                 <i class="fas fa-plus"></i> Daftarkan
               </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteUnregisteredCard('${uid}')">
+                <i class="fas fa-trash"></i> Hapus
+              </button>
             </td>
           </tr>`;
       }
     });
   });
 }
+
+window.deleteUnregisteredCard = function(uid) {
+  if (confirm("Apakah Anda yakin ingin menghapus kartu yang belum terdaftar ini?")) {
+    remove(ref(db, `absensi/${uid}`))
+      .then(() => {
+        alert("Kartu berhasil dihapus!");
+        loadUnregisteredCards();
+      })
+      .catch(error => {
+        alert("Gagal menghapus kartu: " + error.message);
+      });
+  }
+};
 
 window.registerNewCard = function(uid) {
   const nama = prompt("Masukkan nama untuk kartu ini:");
@@ -662,107 +678,110 @@ window.resetFilters = function() {
   applyFilters();
 }
 
-// Fungsi untuk mengekspor data ke Excel
 window.exportToExcel = async function() {
   try {
     const snapshot = await get(ref(db, "absensi"));
     if (!snapshot.exists()) return alert("Tidak ada data untuk diekspor.");
     
-    let allEntries = [];
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    // Buat data untuk Excel
+    const excelData = [];
+    const users = {};
+    const activeDates = new Set(); // Hanya menyimpan tanggal yang ada absensinya
     
-    // Kumpulkan semua data
+    // Proses data absensi
     snapshot.forEach(child => {
       const uid = child.key;
       const nama = child.val().nama || "Tidak Dikenal";
       const kelas = child.val().kelas || "Belum diatur";
       const history = child.val().history || {};
       
+      if (!users[uid]) {
+        users[uid] = {
+          nama,
+          kelas,
+          attendance: {} // Format: { "dd/mm/yyyy": {Subuh: boolean, Ashar: boolean, Maghrib: boolean} }
+        };
+      }
+      
+      // Proses setiap tap
       Object.values(history).forEach(entry => {
         const waktuObj = new Date(entry.waktu + "Z");
-        // Filter hanya bulan ini
-        if (waktuObj.getMonth() === currentMonth && waktuObj.getFullYear() === currentYear) {
-          const tanggal = waktuObj.toLocaleDateString("id-ID", { 
-            timeZone: "Asia/Jakarta",
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-          }).replace(/\//g, '/');
-          const jam = waktuObj.toLocaleTimeString("id-ID", { 
-            timeZone: "Asia/Jakarta", 
-            hour: '2-digit', 
-            minute: '2-digit'
-          });
-          
-          const statusInfo = getPrayerStatus(jam);
-          
-          allEntries.push({
-            nama,
-            kelas,
-            uid,
-            tanggal,
-            jam,
-            status: statusInfo.status,
-            waktuObj
-          });
+        const dateKey = waktuObj.toLocaleDateString("id-ID", { 
+          timeZone: "Asia/Jakarta",
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        }).replace(/\//g, '/');
+        
+        const jam = waktuObj.toLocaleTimeString("id-ID", { 
+          timeZone: "Asia/Jakarta", 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: false
+        }).replace(/\./g, ':');
+        
+        const statusInfo = getPrayerStatus(jam);
+        
+        // Hanya catat jika termasuk waktu sholat yang valid
+        if (statusInfo.status === 'Subuh' || statusInfo.status === 'Ashar' || statusInfo.status === 'Maghrib') {
+          if (!users[uid].attendance[dateKey]) {
+            users[uid].attendance[dateKey] = {
+              Subuh: false,
+              Ashar: false,
+              Maghrib: false
+            };
+          }
+          users[uid].attendance[dateKey][statusInfo.status] = true;
+          activeDates.add(dateKey); // Tambahkan ke set tanggal aktif
         }
       });
     });
     
-    // Buat data untuk Excel
-    const excelData = [];
-    const users = {};
-    
-    // Kelompokkan data berdasarkan user dan tanggal
-    allEntries.forEach(entry => {
-      if (!users[entry.uid]) {
-        users[entry.uid] = {
-          nama: entry.nama,
-          kelas: entry.kelas,
-          dates: {}
-        };
-      }
-      
-      const dateKey = entry.tanggal;
-      if (!users[entry.uid].dates[dateKey]) {
-        users[entry.uid].dates[dateKey] = {
-          Subuh: false,
-          Ashar: false,
-          Maghrib: false
-        };
-      }
-      
-      if (entry.status === 'Subuh') users[entry.uid].dates[dateKey].Subuh = true;
-      if (entry.status === 'Ashar') users[entry.uid].dates[dateKey].Ashar = true;
-      if (entry.status === 'Maghrib') users[entry.uid].dates[dateKey].Maghrib = true;
+    // Urutkan tanggal aktif
+    const sortedDates = Array.from(activeDates).sort((a, b) => {
+      const [dayA, monthA, yearA] = a.split('/').map(Number);
+      const [dayB, monthB, yearB] = b.split('/').map(Number);
+      return new Date(yearA, monthA - 1, dayA) - new Date(yearB, monthB - 1, dayB);
     });
     
-    // Buat header untuk Excel
-    const header = ['No', 'Nama', 'Kelas'];
-    const dates = Object.keys(users[Object.keys(users)[0]]?.dates || {}).sort();
-    dates.forEach(date => {
+    // Buat header Excel
+    const header = ['No', 'Nama', 'Kelas', 'Total Hadir', 'Total Tidak Hadir'];
+    sortedDates.forEach(date => {
       header.push(`${date} (Subuh)`);
       header.push(`${date} (Ashar)`);
       header.push(`${date} (Maghrib)`);
     });
     excelData.push(header);
     
-    // Isi data untuk Excel
+    // Hitung dan tambahkan data per user
     Object.keys(users).forEach((uid, index) => {
       const user = users[uid];
+      let totalHadir = 0;
+      let totalTidakHadir = 0;
+      
+      // Hitung total hadir/tidak hadir hanya untuk tanggal aktif
+      sortedDates.forEach(date => {
+        const attendance = user.attendance[date] || { Subuh: false, Ashar: false, Maghrib: false };
+        
+        if (attendance.Subuh) totalHadir++; else totalTidakHadir++;
+        if (attendance.Ashar) totalHadir++; else totalTidakHadir++;
+        if (attendance.Maghrib) totalHadir++; else totalTidakHadir++;
+      });
+      
       const row = [
         index + 1,
         user.nama,
-        user.kelas
+        user.kelas,
+        totalHadir,
+        totalTidakHadir
       ];
       
-      dates.forEach(date => {
-        const attendance = user.dates[date] || { Subuh: false, Ashar: false, Maghrib: false };
-        row.push(attendance.Subuh ? 'Hadir' : 'Tidak Hadir');
-        row.push(attendance.Ashar ? 'Hadir' : 'Tidak Hadir');
-        row.push(attendance.Maghrib ? 'Hadir' : 'Tidak Hadir');
+      // Tambahkan data absensi per tanggal
+      sortedDates.forEach(date => {
+        const attendance = user.attendance[date] || { Subuh: false, Ashar: false, Maghrib: false };
+        row.push(attendance.Subuh ? 'H' : 'T');
+        row.push(attendance.Ashar ? 'H' : 'T');
+        row.push(attendance.Maghrib ? 'H' : 'T');
       });
       
       excelData.push(row);
@@ -776,9 +795,8 @@ window.exportToExcel = async function() {
     XLSX.utils.book_append_sheet(wb, ws, "Rekap Absensi");
     
     // Export ke file
-    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
-      "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    const fileName = `Rekap_Absensi_${monthNames[currentMonth]}_${currentYear}.xlsx`;
+    const now = new Date();
+    const fileName = `Rekap_Absensi_${now.getDate()}_${now.getMonth() + 1}_${now.getFullYear()}.xlsx`;
     XLSX.writeFile(wb, fileName);
     
   } catch (error) {
